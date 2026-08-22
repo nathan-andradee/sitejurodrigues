@@ -2,6 +2,8 @@ name: Atualizar fotos e pagamento
 on:
   push:
     branches: [main]
+  pull_request:
+    types: [opened, synchronize]
 permissions:
   contents: write
 jobs:
