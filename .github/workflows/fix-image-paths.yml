@@ -1,0 +1,43 @@
+name: Fix image paths
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: write
+
+jobs:
+  fix-images:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Fix image URLs in index.html
+        run: |
+          python - <<'PY'
+          from pathlib import Path
+          p = Path('index.html')
+          s = p.read_text(encoding='utf-8')
+          replacements = {
+              'images/ju-treino.jpg': 'https://raw.githubusercontent.com/nathan-andradee/sitejurodrigues/main/images/ju-treino.jpg',
+              'images/ju-academia.jpg': 'https://raw.githubusercontent.com/nathan-andradee/sitejurodrigues/main/images/ju-academia.jpg',
+              'images/ju-pilates.webp': 'https://raw.githubusercontent.com/nathan-andradee/sitejurodrigues/main/images/ju-pilates.webp',
+          }
+          for old, new in replacements.items():
+              s = s.replace(old, new)
+          p.write_text(s, encoding='utf-8')
+          PY
+
+      - name: Commit fix
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add index.html
+          if git diff --cached --quiet; then
+            echo "No changes needed"
+          else
+            git commit -m "Fix image loading paths"
+            git push
+          fi
