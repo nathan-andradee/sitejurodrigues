@@ -1,0 +1,1 @@
+Trigger for embedding the site's optimized WebP images directly into index.html.
