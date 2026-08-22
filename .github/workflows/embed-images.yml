@@ -1,19 +1,23 @@
 name: Embed site images as WebP
 
 on:
-  push:
-    branches: [main]
+  pull_request_target:
+    types: [opened, synchronize, reopened]
   workflow_dispatch:
 
 permissions:
   contents: write
+  pull-requests: write
 
 jobs:
   embed-images:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: Checkout pull request branch
         uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.ref }}
+          fetch-depth: 0
 
       - name: Install Pillow
         run: python -m pip install --disable-pip-version-check Pillow
@@ -40,7 +44,8 @@ jobs:
           for filename, source in images.items():
               path = Path(source)
               if not path.exists():
-                  raise SystemExit(f'Imagem não encontrada: {source}')
+                  print(f'{source} não existe; provavelmente já foi incorporada. Pulando.')
+                  continue
 
               with Image.open(path) as im:
                   im = im.convert('RGB')
@@ -53,23 +58,24 @@ jobs:
                   encoded = base64.b64encode(buffer.getvalue()).decode('ascii')
 
               data_uri = 'data:image/webp;base64,' + encoded
-              alternatives = [
-                  source,
-                  filename,
-                  f'https://raw.githubusercontent.com/nathan-andradee/sitejurodrigues/main/{source}',
-                  f'https://github.com/nathan-andradee/sitejurodrigues/raw/refs/heads/main/{source}',
+
+              # Corrige inclusive URLs malformadas/duplicadas que já estejam no HTML.
+              patterns = [
+                  rf'https?://[^"\'\s)]+{re.escape(filename)}',
+                  re.escape(source),
+                  re.escape(filename),
               ]
-
               before = html
-              for old in alternatives:
-                  html = html.replace(old, data_uri)
-              if html == before:
-                  print(f'Aviso: nenhuma referência encontrada para {filename}')
-              else:
+              for pattern in patterns:
+                  html = re.sub(pattern, lambda m: data_uri, html)
+              if html != before:
                   total_replacements += 1
+                  print(f'{filename}: incorporada como WebP inline.')
+              else:
+                  print(f'Aviso: nenhuma referência encontrada para {filename}.')
 
-          if total_replacements == 0:
-              raise SystemExit('Nenhuma das 3 imagens foi encontrada no index.html; abortando para não alterar o site incorretamente.')
+          if total_replacements == 0 and Path('images').exists():
+              raise SystemExit('Nenhuma das imagens foi encontrada no index.html; abortando para não alterar o site incorretamente.')
 
           index.write_text(html, encoding='utf-8')
           PY
@@ -77,14 +83,14 @@ jobs:
       - name: Remove external image folder
         run: rm -rf images
 
-      - name: Commit embedded images
+      - name: Commit embedded images to pull request branch
         run: |
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add index.html images
+          git add -A
           if git diff --cached --quiet; then
             echo "No changes needed"
           else
             git commit -m "Embed optimized WebP images directly in HTML"
-            git push
+            git push origin HEAD:${{ github.event.pull_request.head.ref }}
           fi
